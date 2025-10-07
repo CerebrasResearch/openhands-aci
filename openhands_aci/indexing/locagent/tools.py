@@ -45,6 +45,7 @@ from .repo.dependency_graph.index_retriever import (
 from .repo.dependency_graph.traverse_graph import (
     is_test_file,
     traverse_json_structure,
+    traverse_tree_structure_for_code_comments
 )
 from .results import (
     QueryInfo,
@@ -1110,8 +1111,109 @@ def explore_tree_structure(
     return rtn_str.strip()
 
 
+def get_code_structure_overview_with_code_comments(
+        start_entities: List[str],
+        direction: str = 'downstream',
+        traversal_depth: int = 2,
+        entity_type_filter: Optional[List[str]] = None,
+        dependency_type_filter: Optional[List[str]] = None,
+):
+    """Analyzes and displays the dependency structure around specified entities in a code graph.
+
+    This function searches and presents relationships and dependencies for the specified entities (such as classes, functions, files, or directories) in a code graph.
+    It explores how the input entities relate to others, using defined types of dependencies, including 'contains', 'imports', 'invokes' and 'inherits'.
+    The search can be controlled to traverse upstream (exploring dependencies that entities rely on) or downstream (exploring how entities impact others), with optional limits on traversal depth and filters for entity and dependency types.
+
+    Example Usage:
+    1. Exploring Outward Dependencies:
+        ```
+        get_code_structure_overview_with_code_comments(
+            start_entities=['src/module_a.py:ClassA'],
+            direction='downstream',
+            traversal_depth=2,
+            entity_type_filter=['class', 'function'],
+            dependency_type_filter=['invokes', 'imports']
+        )
+        ```
+        This retrieves the dependencies of `ClassA` up to 2 levels deep, focusing only on classes and functions with 'invokes' and 'imports' relationships.
+
+    2. Exploring Inward Dependencies:
+        ```
+        get_code_structure_overview_with_code_comments(
+            start_entities=['src/module_b.py:FunctionY'],
+            direction='upstream',
+            traversal_depth=-1
+        )
+        ```
+        This finds all entities that depend on `FunctionY` without restricting the traversal depth.
+
+    Notes:
+    * Traversal Control: The `traversal_depth` parameter specifies how deep the function should explore the graph starting from the input entities.
+    * Filtering: Use `entity_type_filter` and `dependency_type_filter` to narrow down the scope of the search, focusing on specific entity types and relationships.
+    * Graph Context: The function operates on a pre-built code graph containing entities (e.g., files, classes and functions) and dependencies representing their interactions and relationships.
+
+    Parameters:
+    ----------
+    start_entities : list[str]
+        List of entities (e.g., class, function, file, or directory paths) to begin the search from.
+        - Entities representing classes or functions must be formatted as "file_path:QualifiedName"
+          (e.g., `interface/C.py:C.method_a.inner_func`).
+        - For files or directories, provide only the file or directory path (e.g., `src/module_a.py` or `src/`).
+
+    direction : str, optional
+        Direction of traversal in the code graph; allowed options are:
+        - 'upstream': Traversal to explore dependencies that the specified entities rely on (how they depend on others).
+        - 'downstream': Traversal to explore the effects or interactions of the specified entities on others
+          (how others depend on them).
+        - 'both': Traversal in both directions.
+        Default is 'downstream'.
+
+    traversal_depth : int, optional
+        Maximum depth of traversal. A value of -1 indicates unlimited depth (subject to a maximum limit).
+        Must be either `-1` or a non-negative integer (≥ 0).
+        Default is 2.
+
+    entity_type_filter : list[str], optional
+        List of entity types (e.g., 'class', 'function', 'file', 'directory') to include in the traversal.
+        If None, all entity types are included.
+        Default is None.
+
+    dependency_type_filter : list[str], optional
+        List of dependency types (e.g., 'contains', 'imports', 'invokes', 'inherits') to include in the traversal.
+        If None, all dependency types are included.
+        Default is None.
+
+    Returns:
+    -------
+    result : object
+        An object representing the traversal results, which includes discovered entities and their dependencies.
+    """
+    parse_repo_index()
+    start_entities, hints = _validate_graph_explorer_inputs(start_entities, direction, traversal_depth,
+                                                            entity_type_filter, dependency_type_filter)
+    G = get_graph()
+
+    rtns_all = [traverse_tree_structure_for_code_comments(G, node, direction, traversal_depth, entity_type_filter,
+                                    dependency_type_filter)
+            for node in start_entities]
+
+    rtns = [x[0] for x in rtns_all]
+    rtn_str = "\n\n".join(rtns)
+
+    rtns_child_str = [x[1] for x in rtns_all]
+    rtns_child_str = "\n\n".join(rtns_child_str)
+
+    if hints.strip():
+        rtn_str += "\n\n" + hints
+    return str(rtn_str.strip()) + "\n\n" + str(rtns_child_str.strip())
+
+
+
+
+
 __all__ = [
     'get_entity_contents',
     'search_code_snippets',
     'explore_tree_structure',
+    'get_code_structure_overview_with_code_comments'
 ]

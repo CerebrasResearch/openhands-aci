@@ -12,6 +12,7 @@ from .build_graph import (
     VALID_EDGE_TYPES,
     VALID_NODE_TYPES,
 )
+from .extract_code_comments import extract_code_comments
 
 
 def is_test_file(nid):
@@ -548,3 +549,133 @@ def traverse_json_structure(
 
     traverse(root, root_dict, 0)
     return root_dict
+
+
+def traverse_tree_structure_for_code_comments(G, root, direction='downstream', hops=2,
+                            node_type_filter: Optional[List[str]] = None,
+                            edge_type_filter: Optional[List[str]] = None):
+    if hops == -1:
+        hops = 20
+
+    rtn_str = []  # return tree string
+    rtn_child_str = [] # for each node in rtn_str, include it's children as tuples
+    rtn_comments_str = [] # for each node, include code comments as string
+    traversed_nodes = set()  # ignore all the traversed edges
+    traversed_edges = set()  # ignore all the traversed nodes
+
+    def _parse_code_comments_to_str(code_comments_dict, node_type, node):
+        code_comments_str = ""
+
+        if node_type not in [NODE_TYPE_CLASS, NODE_TYPE_FUNCTION]:
+            return code_comments_str
+
+        if code_comments_dict is not None:
+            code_comments_dict = code_comments_dict[node_type]
+
+            if node_type == NODE_TYPE_CLASS:
+                key = node.split(":")[-1]
+            elif node_type == NODE_TYPE_FUNCTION:
+                key = node.split(":")[-1]
+                if "." in key:
+                    key = key.split(".")[-1]
+            post_def_comments ="\n".join(code_comments_dict[key]['post_def_comments'])
+            doc_strings = code_comments_dict[key]['docstring']
+            if doc_strings is None:
+                doc_strings = ""
+            else:
+                doc_strings = doc_strings.replace(f'r\"\"\"', '"""').replace(f"r\'\'\'", "'''")
+            code_comments_str =  post_def_comments + "\n" + doc_strings
+        return code_comments_str.strip()
+
+    def traverse(node, prefix, is_last, level, edge_type, edirection):
+        if level > hops:
+            return
+
+        if node == root and level == 0:
+            rtn_str.append(f"{node}")
+            new_prefix = ''
+            edirection = direction
+        else:
+            connector = '└── ' if is_last else '├── '
+            connector += f"{edge_type} ── "
+            rtn_str.append(f"{prefix}{connector}{node}")
+            new_prefix = prefix + (' ' if is_last else '│') + ' ' * (len(connector) - 1)
+
+        if node in traversed_nodes:
+            return
+        traversed_nodes.add(node)
+
+        neigh_ids, etypes, edirs = [], [], []
+
+        def is_ntype_not_valid(_ntype):
+            return node_type_filter is not None and _ntype not in node_type_filter
+
+        def is_etype_not_valid(_etype):
+            return edge_type_filter is not None and _etype not in edge_type_filter
+
+        if 'downstream' == edirection or (node == root and direction == 'both'):
+        # if 'downstream' == edirection or direction == 'both':
+            for neighbor in G.successors(node):
+                neigh_type = G.nodes[neighbor]['type']
+                if is_ntype_not_valid(neigh_type):
+                    continue
+                edges = G[node][neighbor]
+                for key in edges:
+                    etype = edges[key]['type']
+                    if is_etype_not_valid(etype):
+                        continue
+                    if not is_test_file(neighbor):
+                        if (node, etype, neighbor) not in traversed_edges:
+                            neigh_ids.append(neighbor)
+                            etypes.append(etype)
+                            edirs.append('downstream')
+                            traversed_edges.add((node, etype, neighbor))
+
+        if 'upstream' == edirection or (node == root and direction == 'both'):
+        # if 'upstream' == edirection or direction == 'both':
+            for neighbor in G.predecessors(node):
+                neigh_type = G.nodes[neighbor]['type']
+                if is_ntype_not_valid(neigh_type):
+                    continue
+                edges = G[neighbor][node]
+                for key in edges:
+                    etype = edges[key]['type']
+                    if is_etype_not_valid(etype):
+                        continue
+                    if not is_test_file(neighbor):
+                        if (neighbor, etype, node) not in traversed_edges:
+                            neigh_ids.append(neighbor)
+                            etypes.append(etype)
+                            edirs.append('upstream')
+                            traversed_edges.add((neighbor, etype, node))
+
+        rtn_child_str.append([node])
+        node_code = G.nodes[node].get('code', "")
+        node_comments_dict = extract_code_comments(node_code) if len(node_code.strip()) > 0 else None
+        rtn_comments_str.append(_parse_code_comments_to_str(node_comments_dict, G.nodes[node]["type"], node))
+        if level < hops :
+            for i, (neigh_id, etype, edir) in enumerate(zip(neigh_ids, etypes, edirs)):
+                is_last_child = (i == len(neigh_ids) - 1)
+                if edir == 'upstream':
+                    etype += '-by'
+                rtn_child_str[-1].append(f"{etype} {neigh_id}")
+
+        for i, (neigh_id, etype, edir) in enumerate(zip(neigh_ids, etypes, edirs)):
+            is_last_child = (i == len(neigh_ids) - 1)
+            if edir == 'upstream':
+                etype += '-by'
+            traverse(neigh_id, new_prefix, is_last_child, level + 1, etype, edir)
+
+    traverse(root, '', False, 0, None, None)
+
+    final_comment_str = []
+    for edge_list, code_comment in zip(rtn_child_str, rtn_comments_str):
+        edge_str = "\n    ".join(edge_list)
+        if code_comment:
+            edge_str += f"\n{code_comment}"
+        if len(edge_list) > 1 or code_comment:
+            final_comment_str.append(edge_str)
+
+    return "\n".join(rtn_str), "\n=============================\n".join(final_comment_str)
+
+

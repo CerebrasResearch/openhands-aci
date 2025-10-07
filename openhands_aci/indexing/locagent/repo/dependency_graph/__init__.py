@@ -13,6 +13,7 @@ from .traverse_graph import (
     RepoEntitySearcher,
     traverse_graph_structure,
     traverse_tree_structure,
+    traverse_tree_structure_for_code_comments
 )
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     RepoDependencySearcher,
     traverse_tree_structure,
     traverse_graph_structure,
+    traverse_tree_structure_for_code_comments,
     build_graph,
     NODE_TYPE_DIRECTORY,
     NODE_TYPE_FILE,
