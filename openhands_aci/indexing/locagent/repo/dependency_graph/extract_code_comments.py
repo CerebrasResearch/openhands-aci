@@ -18,6 +18,7 @@ class CommentExtractor(cst.CSTVisitor):
         self.comments = {}
         self.current_module = None
         self.source_lines = []
+        self.class_stack = []  # Track nested classes
 
     def extract_comments(self, source_code: str) -> Dict[str, Dict[str, Union[str, List[str]]]]:
         """
@@ -33,11 +34,19 @@ class CommentExtractor(cst.CSTVisitor):
                     'ClassName': {
                         'docstring': 'class docstring',
                         'post_def_comments': ""
+                    },
+                    'OuterClass.InnerClass': {
+                        'docstring': 'nested class docstring',
+                        'post_def_comments': ""
                     }
                 },
                 'function': {
                     'function_name': {
                         'docstring': 'function docstring',
+                        'post_def_comments': ['# comment after def']
+                    },
+                    'ClassName.method_name': {
+                        'docstring': 'method docstring',
                         'post_def_comments': ['# comment after def']
                     }
                 }
@@ -45,6 +54,7 @@ class CommentExtractor(cst.CSTVisitor):
         """
         self.source_lines = source_code.split('\n')
         self.comments = {NODE_TYPE_CLASS: {}, NODE_TYPE_FUNCTION: {}}
+        self.class_stack = []
 
         try:
             tree = cst.parse_expression(source_code) if source_code.strip().startswith('(') else cst.parse_module(source_code)
@@ -55,24 +65,41 @@ class CommentExtractor(cst.CSTVisitor):
 
         return self.comments
 
-    def visit_ClassDef(self, node: cst.ClassDef) -> None:
+    def visit_ClassDef(self, node: cst.ClassDef) -> Optional[bool]:
         """Visit class definitions and extract comments."""
         class_name = node.name.value
+
+        # Build qualified name for nested classes
+        if self.class_stack:
+            qualified_name = '.'.join(self.class_stack) + '.' + class_name
+        else:
+            qualified_name = class_name
 
         # Extract docstring
         docstring = self._extract_docstring(node.body)
 
-        self.comments[NODE_TYPE_CLASS][class_name] = {
+        self.comments[NODE_TYPE_CLASS][qualified_name] = {
             'docstring': docstring,
             'post_def_comments': ""
         }
 
-        # Do not continue visiting child nodes
-        return False
+        # Push current class onto stack for nested classes
+        self.class_stack.append(class_name)
 
-    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+    def leave_ClassDef(self, original_node: cst.ClassDef) -> None:
+        """Pop class from stack when leaving class definition."""
+        if self.class_stack:
+            self.class_stack.pop()
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> Optional[bool]:
         """Visit function definitions and extract comments."""
         func_name = node.name.value
+
+        # Build qualified name for methods (include class name if inside a class)
+        if self.class_stack:
+            qualified_name = '.'.join(self.class_stack) + '.' + func_name
+        else:
+            qualified_name = func_name
 
         # Extract docstring
         docstring = self._extract_docstring(node.body)
@@ -80,12 +107,12 @@ class CommentExtractor(cst.CSTVisitor):
         # Extract comments immediately following function definition
         post_def_comments = self._extract_post_def_comments(node)
 
-        self.comments[NODE_TYPE_FUNCTION][func_name] = {
+        self.comments[NODE_TYPE_FUNCTION][qualified_name] = {
             'docstring': docstring,
             'post_def_comments': post_def_comments
         }
 
-        # Continue visiting child nodes
+        # Continue visiting child nodes (for nested functions)
 
     def _extract_docstring(self, body: cst.BaseSuite) -> Optional[str]:
         """Extract docstring from function or class body."""
@@ -222,6 +249,21 @@ class MyClass:  # This is a class comment
 
     def __init__(self):
         pass
+
+    def my_method(self, param1: int, param2: str) -> None:  # Method comment
+        """This is a method docstring."""
+        # This comment should be extracted
+        # This is another post-def comment
+
+        print("Hello World")  # This should not be extracted
+
+class MyClass2:  # This is a class comment
+    """This is a class docstring."""
+
+    class ObjectReferencePart:
+        """Details about a table alias."""
+        part: str  # Name of the part
+        segment: str  # Segment containing the part
 
     def my_method(self, param1: int, param2: str) -> None:  # Method comment
         """This is a method docstring."""

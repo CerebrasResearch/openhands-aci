@@ -1,4 +1,5 @@
 import re
+import os
 from collections import defaultdict
 from typing import List, Optional
 
@@ -555,7 +556,7 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
                             node_type_filter: Optional[List[str]] = None,
                             edge_type_filter: Optional[List[str]] = None):
     if hops == -1:
-        hops = 20
+        hops = 6
 
     rtn_str = []  # return tree string
     rtn_child_str = [] # for each node in rtn_str, include it's children as tuples
@@ -573,7 +574,8 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
             code_comments_dict = code_comments_dict[node_type]
 
             if node_type == NODE_TYPE_CLASS:
-                key = node.split(":")[-1]
+                # the second split (".") is to handle nested classes
+                key = node.split(":")[-1].split(".")[-1]
             elif node_type == NODE_TYPE_FUNCTION:
                 key = node.split(":")[-1]
                 if "." in key:
@@ -592,7 +594,7 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
             return
 
         if node == root and level == 0:
-            rtn_str.append(f"{node}")
+            rtn_str.append(f"{os.getcwd()}")
             new_prefix = ''
             edirection = direction
         else:
@@ -649,7 +651,10 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
                             edirs.append('upstream')
                             traversed_edges.add((neighbor, etype, node))
 
-        rtn_child_str.append([node])
+        if node == root:
+            rtn_child_str.append([f"{os.getcwd()}"])
+        else:
+            rtn_child_str.append([node])
         node_code = G.nodes[node].get('code', "")
         node_comments_dict = extract_code_comments(node_code) if len(node_code.strip()) > 0 else None
         rtn_comments_str.append(_parse_code_comments_to_str(node_comments_dict, G.nodes[node]["type"], node))
@@ -676,6 +681,6 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
         if len(edge_list) > 1 or code_comment:
             final_comment_str.append(edge_str)
 
-    return "\n".join(rtn_str), "\n=============================\n".join(final_comment_str)
+    return "\n".join(rtn_str), "\n----------------------------------\n".join(final_comment_str)
 
 
