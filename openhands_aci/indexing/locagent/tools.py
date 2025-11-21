@@ -1189,19 +1189,25 @@ def get_code_structure_overview_with_code_comments(
         An object representing the traversal results, which includes discovered entities and their dependencies.
     """
     parse_repo_index()
+    print(f"DEBUG: parsing done")
     start_entities, hints = _validate_graph_explorer_inputs(start_entities, direction, traversal_depth,
                                                             entity_type_filter, dependency_type_filter)
+    print(f"DEBUG: validation done")
     G = get_graph()
-
+    print(f"DEBUG: got graph")
     rtns_all = [traverse_tree_structure_for_code_comments(G, node, direction, traversal_depth, entity_type_filter,
                                     dependency_type_filter)
             for node in start_entities]
 
+    print(f"DEBUG: rtns_all done: {rtns_all}")
     rtns = [x[0] for x in rtns_all]
     rtn_str = "\n\n".join(rtns)
+    print(f"DEBUG: rtn_str done: {rtn_str}")
 
     rtns_child_str = [x[1] for x in rtns_all]
     rtns_child_str = "\n\n".join(rtns_child_str)
+    print(f"DEBUG: rtns_child_str done: {rtns_child_str}")
+
 
     if hints.strip():
         rtn_str += "\n\n" + hints

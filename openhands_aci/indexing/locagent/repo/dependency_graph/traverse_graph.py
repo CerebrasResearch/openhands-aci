@@ -557,6 +557,7 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
                             edge_type_filter: Optional[List[str]] = None):
     if hops == -1:
         hops = 6
+    print(f"[DEBUG]: Traversing tree structure for code comments with hops={hops}...")
 
     rtn_str = []  # return tree string
     rtn_child_str = [] # for each node in rtn_str, include it's children as tuples
@@ -590,6 +591,8 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
         return code_comments_str.strip()
 
     def traverse(node, prefix, is_last, level, edge_type, edirection):
+        print(f"[DEBUG]: In traverse(), level={level}, node={node}, edge_type={edge_type}, edirection={edirection}...")
+
         if level > hops:
             return
 
@@ -671,7 +674,7 @@ def traverse_tree_structure_for_code_comments(G, root, direction='downstream', h
                 etype += '-by'
             traverse(neigh_id, new_prefix, is_last_child, level + 1, etype, edir)
 
-    traverse(root, '', False, 0, None, None)
+    traverse(root, '', False, 0, edge_type_filter, direction)
 
     final_comment_str = []
     for edge_list, code_comment in zip(rtn_child_str, rtn_comments_str):
